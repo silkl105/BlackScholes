@@ -1,0 +1,8 @@
+name: envs
+channels:
+  - defaults
+  - conda-forge
+dependencies:
+  - python=3.13.1
+  - pandas=2.2.3
+  - numpy=2.2.1
