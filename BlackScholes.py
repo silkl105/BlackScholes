@@ -7,34 +7,39 @@ from scipy.stats import norm
 class BlackScholes:
     """
     A class to compute Black-Scholes option prices and generate heatmaps of
-    call and put prices across a range of spot prices and volatilities.
+    call and put prices (or PnL if a purchase price is given) across a range
+    of spot prices and volatilities.
 
-    All numerical parameters must be strictly greater than zero.
+    If a user-specified 'purchase_price_call' or 'purchase_price_put' is > 0,
+    the heatmap will display the PnL, defined by: PnL = option_value - purchase_price
+    using a diverging colormap (green for positive, red for negative). 
+    Otherwise, if purchase prices are 0.0, the heatmaps show the standard 
+    option values with the 'viridis' colormap.
 
     Parameters
     ----------
-    current_price : float, The current price of the underlying asset, must be > 0.
-    strike : float, The strike price of the option, must be > 0.
-    time_to_maturity : float, Time to maturity (in years), must be > 0.
-    interest_rate : float, The risk-free interest rate (annualized), must be > 0.
-    volatility : float, The volatility (annualized) of the underlying asset, must be > 0.
+    current_price: float. The current (spot) price of the underlying asset, must be > 0.
+    strike: float. The strike price of the option, must be > 0.
+    time_to_maturity: float. The time to maturity in years, must be > 0.
+    interest_rate: float. The risk-free interest rate (annualized), must be > 0.
+    volatility: float. The annualized volatility of the underlying asset, must be > 0.
+
+    Raises
+    ------
+    ValueError. If any of the initialized parameters is non-positive.
     """
 
-    def __init__(
-        self,
-        current_price: float,
-        strike: float,
-        time_to_maturity: float,
-        interest_rate: float,
-        volatility: float
-    ) -> None:
+    def __init__(self, current_price: float, strike: float, time_to_maturity: float, interest_rate: float, volatility: float) -> None:
         # Validate that all parameters are > 0
-        inputs = {"current_price": current_price, "strike": strike, "time_to_maturity": time_to_maturity, "interest_rate": interest_rate, "volatility": volatility}
+        inputs = {"current_price": current_price,
+                  "strike": strike,
+                  "time_to_maturity": time_to_maturity,
+                  "interest_rate": interest_rate,
+                  "volatility": volatility
+                  }
         for name, value in inputs.items():
             if value <= 0:
-                raise ValueError(
-                    f"{name} must be a positive float, got {value} instead."
-                )
+                raise ValueError(f"{name} must be a positive float, got {value} instead.")
 
         self.current_price = current_price
         self.strike = strike
@@ -48,13 +53,10 @@ class BlackScholes:
 
         Returns
         -------
-        tuple[float, float]: A tuple containing (d1, d2).
+        (d1, d2): tuple of floats. The d1 and d2 values for the Black-Scholes formula.
         """
-        d1 = (
-            np.log(self.current_price / self.strike)
-            + (self.interest_rate + 0.5 * self.volatility ** 2)
-              * self.time_to_maturity
-        ) / (self.volatility * np.sqrt(self.time_to_maturity))
+        d1 = (np.log(self.current_price / self.strike) + (self.interest_rate + 0.5 * self.volatility ** 2)
+              * self.time_to_maturity) / (self.volatility * np.sqrt(self.time_to_maturity))
 
         d2 = d1 - self.volatility * np.sqrt(self.time_to_maturity)
         return d1, d2
@@ -65,16 +67,11 @@ class BlackScholes:
 
         Returns
         -------
-        float: The call option price.
+        float. The call option price.
         """
         d1, d2 = self.calculate_d1_d2()
-        discounted_strike = (
-            self.strike
-            * np.exp(-self.interest_rate * self.time_to_maturity)
-        )
-        return (self.current_price * norm.cdf(d1)) - (
-            discounted_strike * norm.cdf(d2)
-        )
+        discounted_strike = self.strike * np.exp(-self.interest_rate * self.time_to_maturity)
+        return (self.current_price * norm.cdf(d1)) - (discounted_strike * norm.cdf(d2))
 
     def put_option_price(self) -> float:
         """
@@ -82,43 +79,47 @@ class BlackScholes:
 
         Returns
         -------
-        float: The put option price.
+        float. The put option price.
         """
         d1, d2 = self.calculate_d1_d2()
-        discounted_strike = (
-            self.strike
-            * np.exp(-self.interest_rate * self.time_to_maturity)
-        )
-        return (discounted_strike * norm.cdf(-d2)) - (
-            self.current_price * norm.cdf(-d1)
-        )
+        discounted_strike = self.strike * np.exp(-self.interest_rate * self.time_to_maturity)
+        return (discounted_strike * norm.cdf(-d2)) - (self.current_price * norm.cdf(-d1))
 
     def generate_heatmaps(
         self,
         spot_range: tuple[float, float],
-        volatility_range: tuple[float, float]
-    ) -> None:
+        volatility_range: tuple[float, float],
+        purchase_price_call: float = 0.0,
+        purchase_price_put: float = 0.0
+    ):
         """
-        Generate call and put price heatmaps over specified spot-price and
-        volatility ranges. Both lower bounds (spot_range[0] and
-        volatility_range[0]) must be > 0.
+        Generate heatmaps for call and put across specified spot and volatility ranges.
+        Optionally incorporate a purchase price for each option to display PnL.
 
-        The grid size is determined as follows:
-        - If spot range width >= 5, use 10 columns; otherwise subdivide in steps of 0.5.
-        - If volatility range width >= 0.10, use 10 rows; otherwise subdivide in steps of 0.01.
-        - We round the differences to 4 decimals to avoid floating-point precision issues.
+        If `purchase_price_call` > 0, the call heatmap will show: call_price - purchase_price_call
+        If `purchase_price_put` > 0, the put heatmap will show: put_price - purchase_price_put
+        Both are displayed using a diverging colormap (RdYlGn) centered at zero.
+        If either purchase price is 0.0, that options heatmap displays its raw price
+        with the 'viridis' colormap.
 
         Parameters
         ----------
-        spot_range : tuple[float, float]: The minimum and maximum spot prices to cover (inclusive). Both must be > 0.
-        volatility_range : tuple[float, float]: The minimum and maximum volatilities to cover (inclusive). Both must be > 0.
+        spot_range : tuple of floats.
+            (min_spot, max_spot). The inclusive range of spot prices to evaluate. Both must be strictly > 0.
+        volatility_range : tuple of floats
+            (min_vol, max_vol). The inclusive range of volatilities to evaluate. Both must be strictly > 0.
+        purchase_price_call : float, optional. If > 0, display the call heatmap as PnL. Default is 0.0.
+        purchase_price_put : float, optional. If > 0, display the put heatmap as PnL. Default is 0.0.
+
+        Returns
+        -------
+        fig_call : matplotlib.figure.Figure. The Matplotlib figure object for the call heatmap.
+        fig_put : matplotlib.figure.Figure. The Matplotlib figure object for the put heatmap.
 
         Raises
         ------
-        ValueError
-            If the lower bound of either range is not strictly > 0.
+        ValueError. If the lower bound of either range is not strictly > 0.
         """
-        # Validate that bottom values of the ranges are > 0
         if spot_range[0] <= 0:
             raise ValueError(
                 f"spot_range lower bound must be > 0, got {spot_range[0]} instead."
@@ -128,32 +129,30 @@ class BlackScholes:
                 f"volatility_range lower bound must be > 0, got {volatility_range[0]} instead."
             )
 
-        # Determine how many steps for spot and volatility
+        # Determine resolution for the spot/x-axis
         ds = round(spot_range[1] - spot_range[0], 4)
-        dv = round(volatility_range[1] - volatility_range[0], 4)
-
-        # Spot resolution
         if ds >= 5.0:
             x_res = 10
         else:
             intervals_spot = int(np.floor(ds / 0.5))
             x_res = max(2, intervals_spot + 1)
 
-        # Volatility resolution
+        # Determine resolution for the volatility/y-axis
+        dv = round(volatility_range[1] - volatility_range[0], 4)
         if dv >= 0.10:
             y_res = 10
         else:
             intervals_vol = int(np.floor(dv / 0.01))
             y_res = max(2, intervals_vol + 1)
 
-        # Construct the arrays of spot prices and volatilities
+        # Create arrays of spot prices and volatilities
         spot_prices = np.linspace(spot_range[0], spot_range[1], x_res)
         volatilities = np.linspace(volatility_range[0], volatility_range[1], y_res)
 
-        # Compute call/put prices in a 2D grid
         call_prices = np.zeros((y_res, x_res))
         put_prices = np.zeros((y_res, x_res))
 
+        # Compute option prices across the grid
         for i, vol in enumerate(volatilities):
             self.volatility = vol
             for j, sp in enumerate(spot_prices):
@@ -161,53 +160,51 @@ class BlackScholes:
                 call_prices[i, j] = self.call_option_price()
                 put_prices[i, j] = self.put_option_price()
 
-        # Plotting setup
-        fig, (ax_call, ax_put) = plt.subplots(1, 2, figsize=(14, 6))
-        plt.subplots_adjust(wspace=0.25)
+        # Decide how to render call and put data: PnL or raw option value
+        def data_and_cmap(prices: np.ndarray, purchase_price: float):
+            """
+            Returns (transformed_data, colormap, center).
+            If purchase_price > 0, data = prices - purchase_price (PnL), colormap = 'RdYlGn', center=0.
+            Otherwise, data = prices (raw option value), colormap = 'viridis', center=None.
+            """
+            if purchase_price > 0:
+                return prices - purchase_price, "RdYlGn", 0
+            else:
+                return prices, "viridis", None
 
-        # Call Heatmap
+        call_data, cmap_call, center_call = data_and_cmap(call_prices, purchase_price_call)
+        put_data,  cmap_put,  center_put  = data_and_cmap(put_prices, purchase_price_put)
+
+        # --- Create the CALL figure ---
+        fig_call, ax_call = plt.subplots(figsize=(7, 6))
         sns.heatmap(
-            call_prices,
-            xticklabels=[f"{sp:.1f}" for sp in spot_prices],
+            call_data,
+            xticklabels=[f"{p:.1f}" for p in spot_prices],
             yticklabels=[f"{v:.2f}" for v in volatilities],
             annot=True,
-            annot_kws={"size": 8},
             fmt=".2f",
-            cmap="viridis",
+            cmap=cmap_call,
+            center=center_call,
             ax=ax_call
         )
-        ax_call.set_title("Call Price Heatmap")
         ax_call.set_xlabel("Spot Price")
         ax_call.set_ylabel("Volatility")
-        ax_call.set_xticklabels(ax_call.get_xticklabels(), rotation=0)
+        fig_call.tight_layout()
 
-        # Put Heatmap
+        # --- Create the PUT figure ---
+        fig_put, ax_put = plt.subplots(figsize=(7, 6))
         sns.heatmap(
-            put_prices,
-            xticklabels=[f"{sp:.1f}" for sp in spot_prices],
+            put_data,
+            xticklabels=[f"{p:.1f}" for p in spot_prices],
             yticklabels=[f"{v:.2f}" for v in volatilities],
             annot=True,
-            annot_kws={"size": 8},
             fmt=".2f",
-            cmap="viridis",
+            cmap=cmap_put,
+            center=center_put,
             ax=ax_put
         )
-        ax_put.set_title("Put Price Heatmap")
         ax_put.set_xlabel("Spot Price")
         ax_put.set_ylabel("Volatility")
-        ax_put.set_xticklabels(ax_put.get_xticklabels(), rotation=0)
+        fig_put.tight_layout()
 
-        plt.tight_layout()
-        plt.show()
-
-
-if __name__ == "__main__":
-    # 1) Valid inputs, large ranges => 10 x 10
-    bs = BlackScholes(130.0, 100.0, 3.0, 0.04, 0.3)
-    bs.generate_heatmaps((1.0, 156.0), (0.15, 0.45))
-
-    # 2) Narrower volatility => dynamic steps
-    bs.generate_heatmaps((100.0, 103.5), (0.10, 0.12))
-
-    # 3) Another narrower example
-    bs.generate_heatmaps((100.0, 110.0), (0.10, 0.14))
+        return fig_call, fig_put
