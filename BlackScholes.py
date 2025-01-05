@@ -2,6 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import seaborn as sns
 from scipy.stats import norm
+import plotly.graph_objects as go
 
 
 class BlackScholes:
@@ -18,44 +19,49 @@ class BlackScholes:
 
     Parameters
     ----------
-    current_price: float. The current (spot) price of the underlying asset, must be > 0.
-    strike: float. The strike price of the option, must be > 0.
+    underlying_price: float. The current (spot) price of the underlying asset ($ per share), must be > 0.
+    strike: float. The strike price of the option ($ per share), must be > 0.
     time_to_maturity: float. The time to maturity in years, must be > 0.
-    interest_rate: float. The risk-free interest rate (annualized), must be > 0.
-    volatility: float. The annualized volatility of the underlying asset, must be > 0.
+    interest_rate: float. The continuously compounded risk-free interest rate (% p.a.), must be > 0.
+    volatility: float. The volatility of the underlying asset (% p.a.), must be > 0.
+    dividend_yield : float, optional. If > 0, the Black-Scholes-Merton model includes the continuously compounded dividend yield parameter (% p.a.). Default is 0.00.
 
     Raises
     ------
-    ValueError. If any of the initialized parameters is non-positive.
+    ValueError. If dividend_yield is negative or if any of the other initialized parameters is non-positive.
     """
 
-    def __init__(self, current_price: float, strike: float, time_to_maturity: float, interest_rate: float, volatility: float) -> None:
+    def __init__(self, underlying_price: float, strike: float, time_to_maturity: float, interest_rate: float, volatility: float, dividend_yield: float = 0.0) -> None:
         # Validate that all parameters are > 0
-        inputs = {"current_price": current_price,
+        inputs = {"underlying_price": underlying_price,
                   "strike": strike,
                   "time_to_maturity": time_to_maturity,
                   "interest_rate": interest_rate,
                   "volatility": volatility
-                  }
+        }
         for name, value in inputs.items():
             if value <= 0:
                 raise ValueError(f"{name} must be a positive float, got {value} instead.")
+        
+        if dividend_yield < 0:
+            raise ValueError(f"dividend_yield must be >= 0, got {dividend_yield} instead.")
 
-        self.current_price = current_price
+        self.underlying_price = underlying_price
         self.strike = strike
         self.time_to_maturity = time_to_maturity
         self.interest_rate = interest_rate
         self.volatility = volatility
+        self.dividend_yield = dividend_yield
 
     def calculate_d1_d2(self) -> tuple[float, float]:
         """
-        Calculate the d1 and d2 parameters used in the Black-Scholes formula.
+        Calculate the d1 and d2 parameters used in the Black-Scholes-Merton formula.
 
         Returns
         -------
-        (d1, d2): tuple of floats. The d1 and d2 values for the Black-Scholes formula.
+        (d1, d2): tuple of floats. The d1 and d2 values for the Black-Scholes-Merton formula.
         """
-        d1 = (np.log(self.current_price / self.strike) + (self.interest_rate + 0.5 * self.volatility ** 2)
+        d1 = (np.log(self.underlying_price / self.strike) + ((self.interest_rate - self.dividend_yield) + 0.5 * self.volatility**2)
               * self.time_to_maturity) / (self.volatility * np.sqrt(self.time_to_maturity))
 
         d2 = d1 - self.volatility * np.sqrt(self.time_to_maturity)
@@ -63,7 +69,7 @@ class BlackScholes:
 
     def call_option_price(self) -> float:
         """
-        Compute the Black-Scholes call option price.
+        Compute the Black-Scholes-Merton call option price.
 
         Returns
         -------
@@ -71,11 +77,14 @@ class BlackScholes:
         """
         d1, d2 = self.calculate_d1_d2()
         discounted_strike = self.strike * np.exp(-self.interest_rate * self.time_to_maturity)
-        return (self.current_price * norm.cdf(d1)) - (discounted_strike * norm.cdf(d2))
-
+        return (
+            self.underlying_price * np.exp(-self.dividend_yield * self.time_to_maturity) * norm.cdf(d1)
+            - discounted_strike * norm.cdf(d2)
+        )
+    
     def put_option_price(self) -> float:
         """
-        Compute the Black-Scholes put option price.
+        Compute the Black-Scholes-Merton put option price.
 
         Returns
         -------
@@ -83,8 +92,66 @@ class BlackScholes:
         """
         d1, d2 = self.calculate_d1_d2()
         discounted_strike = self.strike * np.exp(-self.interest_rate * self.time_to_maturity)
-        return (discounted_strike * norm.cdf(-d2)) - (self.current_price * norm.cdf(-d1))
+        return (
+            discounted_strike * norm.cdf(-d2)
+            - self.underlying_price * np.exp(-self.dividend_yield * self.time_to_maturity) * norm.cdf(-d1)
+        )
+    
+    def greeks(self) -> dict:
+        """
+        Compute delta, gamma, theta, and vega for the Call and Put option under the Black-Scholes-Merton model. 
 
+        Returns
+        -------
+        dictionary. Containing: 'delta_call', 'gamma_call', 'theta_call', 'vega_call',
+            'delta_put', 'gamma_put', 'theta_put', 'vega_put'.
+        """
+        d1, d2 = self.calculate_d1_d2()
+        T = self.time_to_maturity
+        r = self.interest_rate
+        q = self.dividend_yield
+        sigma = self.volatility
+        S = self.underlying_price
+        K = self.strike
+
+        # Probability density at d1
+        pdf_d1 = np.exp(-0.5 * d1**2) / np.sqrt(2.0 * np.pi)
+
+        # Delta for call & put: change in option price given a $1 change in spot price
+        delta_call = np.exp(-q * T) * norm.cdf(d1)
+        delta_put = np.exp(-q * T) * (norm.cdf(d1) - 1.0)
+
+        # Gamma (same for call & put): change in delta given a $1 change in spot price
+        gamma = (np.exp(-q * T) * pdf_d1) / (S * sigma * np.sqrt(T))
+
+        # Vega (same for call & put): change in option price given a 1% change in implied volatility
+        vega = (1/100) * (S * np.exp(-q * T) * pdf_d1 * np.sqrt(T))
+
+        # Theta for call & put: option time decay, change in option price per one calendar day
+        call_theta = (1/365) * (
+            - (S * np.exp(-q * T) * pdf_d1 * sigma)
+              / (2.0 * np.sqrt(T))
+            - r * K * np.exp(-r * T) * norm.cdf(d2)
+            + q * S * np.exp(-q * T) * norm.cdf(d1)
+        )
+
+        put_theta = (1/365) * (
+            - (S * np.exp(-q * T) * pdf_d1 * sigma)
+              / (2.0 * np.sqrt(T))
+            + r * K * np.exp(-r * T) * norm.cdf(-d2)
+            - q * S * np.exp(-q * T) * norm.cdf(-d1)
+        )
+
+        # Return greeks in a dictionary
+        return {
+            "delta_call": delta_call,
+            "delta_put": delta_put,
+            "gamma": gamma,
+            "theta_call": call_theta,
+            "theta_put": put_theta,
+            "vega": vega,
+        }
+    
     def generate_heatmaps(
         self,
         spot_range: tuple[float, float],
@@ -156,7 +223,7 @@ class BlackScholes:
         for i, vol in enumerate(volatilities):
             self.volatility = vol
             for j, sp in enumerate(spot_prices):
-                self.current_price = sp
+                self.underlying_price = sp
                 call_prices[i, j] = self.call_option_price()
                 put_prices[i, j] = self.put_option_price()
 
@@ -208,3 +275,68 @@ class BlackScholes:
         fig_put.tight_layout()
 
         return fig_call, fig_put
+    
+    def compute_greek_curve(
+        self,
+        greek_name: str,
+        param_name: str,
+        num_points: int = 50,
+        pct_range: float = 0.50
+    ) -> tuple[list[float], list[float]]:
+        """
+        Compute how the chosen 'greek_name' changes when 'param_name' is varied from 
+        -pct_range% to +pct_range% around its current value. Returns (x_vals, y_vals).
+
+        Dynamically modifies the parameter to generate Greek values while reverting 
+        changes after each computation.
+
+        Parameters
+        ----------
+        greek_name : str
+            Must be one of the keys in the dictionary returned by self.greeks(), 
+            e.g., "delta_call", "delta_put", "theta_call", "theta_put", "gamma", "vega".
+        param_name : str
+            Which parameter to vary: "underlying_price", "strike", "time_to_maturity", "interest_rate", or "volatility".
+        num_points : int, optional
+            Number of sample points in the -pct_range%..+pct_range% interval.
+        pct_range : float, optional
+            Fractional range (0.50 => ±50%).
+
+        Returns
+        -------
+        (x_vals, y_vals) : (list of floats, list of floats)
+            The parameter values varied on the x-axis and the corresponding Greek values 
+            on the y-axis.
+
+        Raises
+        ------
+        ValueError
+            If the provided `param_name` or `greek_name` is invalid.
+        """
+        # Check if param_name exists
+        if not hasattr(self, param_name):
+            raise ValueError(f"Invalid parameter name: {param_name}")
+
+        # Get the current value of the parameter to vary
+        current_val = getattr(self, param_name)
+
+        # Build an array of parameter values from -pct_range% to +pct_range%
+        min_val = current_val * (1 - pct_range)
+        max_val = current_val * (1 + pct_range)
+        x_vals = np.linspace(min_val, max_val, num_points).tolist()
+
+        # List to store Greek values
+        y_vals = []
+
+        # Iterate over the x_vals, temporarily modify the parameter, and compute the Greek
+        for x in x_vals:
+            setattr(self, param_name, x) # Temporarily override the parameter
+            greeks_map = self.greeks()
+
+            if greek_name not in greeks_map:
+                raise ValueError(f"Invalid Greek name: {greek_name}")
+
+            y_vals.append(greeks_map[greek_name])
+            setattr(self, param_name, current_val) # Revert the parameter back to its original value
+
+        return x_vals, y_vals
