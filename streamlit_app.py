@@ -231,7 +231,7 @@ def main():
             step=0.01,
             format="%.2f",
             value=0.0,
-            help="If > 0, heatmap shows (call value - purchase price call). Otherwise, it shows the raw call price."
+            help="If > 0.00, the heatmap shows the call price - the purchase price. Otherwise, it shows the raw call price."
         )
         # Only affect the call heatmap
         fig_call, _ = bs.generate_heatmaps(
@@ -240,7 +240,7 @@ def main():
             purchase_price_call=purchase_price_call,
             purchase_price_put=0.0
         )
-        st.pyplot(fig_call)
+        st.plotly_chart(fig_call, use_container_width=True)
 
     with heat_col2:
         purchase_price_put = st.number_input(
@@ -249,7 +249,7 @@ def main():
             step=0.01,
             format="%.2f",
             value=0.0,
-            help="If > 0, heatmap shows (put value - purchase price put). Otherwise, it shows the raw put price."
+            help="If > 0.00, the heatmap shows the put price - the purchase price. Otherwise, it shows the raw put price."
         )
         # Only affect the put heatmap
         _, fig_put = bs.generate_heatmaps(
@@ -258,7 +258,7 @@ def main():
             purchase_price_call=0.0,
             purchase_price_put=purchase_price_put
         )
-        st.pyplot(fig_put)
+        st.plotly_chart(fig_put, use_container_width=True)
 
 if __name__ == "__main__":
     main()
