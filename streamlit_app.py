@@ -4,6 +4,7 @@ from BlackScholes import BlackScholes
 import plotly.express as px
 import warnings
 import os
+
 st.set_page_config(layout="wide")
 
 def main():
