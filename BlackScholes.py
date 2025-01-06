@@ -1,13 +1,11 @@
 import numpy as np
-import matplotlib.pyplot as plt
-import seaborn as sns
 from scipy.stats import norm
 import plotly.graph_objects as go
-
+from typing import Tuple, Dict, List
 
 class BlackScholes:
     """
-    A class to compute Black-Scholes option prices and generate heatmaps of
+    A class to compute Black-Scholes option prices and Greeks, and generate heatmaps of
     call and put prices (or PnL if a purchase price is given) across a range
     of spot prices and volatilities.
 
@@ -32,7 +30,7 @@ class BlackScholes:
     """
 
     def __init__(self, underlying_price: float, strike: float, time_to_maturity: float, interest_rate: float, volatility: float, dividend_yield: float = 0.0) -> None:
-        # Validate that all parameters are > 0
+        # Input validation (all parameters > 0)
         inputs = {"underlying_price": underlying_price,
                   "strike": strike,
                   "time_to_maturity": time_to_maturity,
@@ -44,7 +42,7 @@ class BlackScholes:
                 raise ValueError(f"{name} must be a positive float, got {value} instead.")
         
         if dividend_yield < 0:
-            raise ValueError(f"dividend_yield must be >= 0, got {dividend_yield} instead.")
+            raise ValueError(f"Dividend yield must be >= 0, got {dividend_yield} instead.")
 
         self.underlying_price = underlying_price
         self.strike = strike
@@ -53,7 +51,7 @@ class BlackScholes:
         self.volatility = volatility
         self.dividend_yield = dividend_yield
 
-    def calculate_d1_d2(self) -> tuple[float, float]:
+    def calculate_d1_d2(self) -> Tuple[float, float]:
         """
         Calculate the d1 and d2 parameters used in the Black-Scholes-Merton formula.
 
@@ -73,7 +71,7 @@ class BlackScholes:
 
         Returns
         -------
-        float. The call option price.
+        float. The call option price under Black-Scholes-Merton.
         """
         d1, d2 = self.calculate_d1_d2()
         discounted_strike = self.strike * np.exp(-self.interest_rate * self.time_to_maturity)
@@ -88,7 +86,7 @@ class BlackScholes:
 
         Returns
         -------
-        float. The put option price.
+        float. The put option price under Black-Scholes-Merton.
         """
         d1, d2 = self.calculate_d1_d2()
         discounted_strike = self.strike * np.exp(-self.interest_rate * self.time_to_maturity)
@@ -99,12 +97,12 @@ class BlackScholes:
     
     def greeks(self) -> dict:
         """
-        Compute delta, gamma, theta, and vega for the Call and Put option under the Black-Scholes-Merton model. 
+        Compute delta, gamma, theta, and vega for both call and put options under the Black-Scholes-Merton model. 
 
         Returns
         -------
-        dictionary. Containing: 'delta_call', 'gamma_call', 'theta_call', 'vega_call',
-            'delta_put', 'gamma_put', 'theta_put', 'vega_put'.
+        dictionary.  A dictionary containing 'delta_call', 'delta_put', 'gamma', 'theta_call',
+            'theta_put', and 'vega'.
         """
         d1, d2 = self.calculate_d1_d2()
         T = self.time_to_maturity
@@ -114,10 +112,9 @@ class BlackScholes:
         S = self.underlying_price
         K = self.strike
 
-        # Probability density at d1
         pdf_d1 = np.exp(-0.5 * d1**2) / np.sqrt(2.0 * np.pi)
 
-        # Delta for call & put: change in option price given a $1 change in spot price
+        # Delta: change in option price given a $1 change in spot price
         delta_call = np.exp(-q * T) * norm.cdf(d1)
         delta_put = np.exp(-q * T) * (norm.cdf(d1) - 1.0)
 
@@ -127,7 +124,7 @@ class BlackScholes:
         # Vega (same for call & put): change in option price given a 1% change in implied volatility
         vega = (1/100) * (S * np.exp(-q * T) * pdf_d1 * np.sqrt(T))
 
-        # Theta for call & put: option time decay, change in option price per one calendar day
+        # Theta (per calendar day): option time decay, change in option price per one calendar day
         call_theta = (1/365) * (
             - (S * np.exp(-q * T) * pdf_d1 * sigma)
               / (2.0 * np.sqrt(T))
@@ -142,7 +139,6 @@ class BlackScholes:
             - q * S * np.exp(-q * T) * norm.cdf(-d1)
         )
 
-        # Return greeks in a dictionary
         return {
             "delta_call": delta_call,
             "delta_put": delta_put,
@@ -154,11 +150,11 @@ class BlackScholes:
 
     def generate_heatmaps(
         self,
-        spot_range: tuple[float, float],
-        volatility_range: tuple[float, float],
+        spot_range: Tuple[float, float],
+        volatility_range: Tuple[float, float],
         purchase_price_call: float = 0.0,
         purchase_price_put: float = 0.0
-    ) -> tuple[go.Figure, go.Figure]:
+    ) -> Tuple[go.Figure, go.Figure]:
         """
         Generate interactive heatmaps for call and put across specified spot and volatility ranges.
         Optionally incorporate a purchase price for each option to display PnL.
@@ -166,22 +162,25 @@ class BlackScholes:
         If `purchase_price_call` > 0, the call heatmap will show: call_price - purchase_price_call
         If `purchase_price_put` > 0, the put heatmap will show: put_price - purchase_price_put
         Both are displayed using a diverging colormap (RdYlGn) centered at zero. If either purchase
-        price is 0.0, that options heatmap displays its raw price with the 'viridis' colormap.
+        price is 0.00, that options heatmap displays its raw price with the 'viridis' colormap.
 
         Parameters
         ----------
-        spot_range : tuple of floats
-            (min_spot, max_spot). The inclusive range of spot prices to evaluate. Both must be strictly > 0.
-        volatility_range : tuple of floats
-            (min_vol, max_vol). The inclusive range of volatilities to evaluate. Both must be strictly > 0.
-        purchase_price_call : float, optional. If > 0, display the call heatmap as PnL. Default is 0.0.
-        purchase_price_put : float, optional. If > 0, display the put heatmap as PnL. Default is 0.0.
+        spot_range : (float, float)
+            (min_spot, max_spot) - spot price range (> 0).
+        volatility_range : (float, float)
+            (min_vol, max_vol) - volatility range (> 0).
+        purchase_price_call : float, optional
+            If > 0, plots call PnL. Defaults to 0.0.
+        purchase_price_put : float, optional
+            If > 0, plots put PnL. Defaults to 0.0.
 
         Returns
         -------
-        tuple[plotly.graph_objects.Figure, plotly.graph_objects.Figure]
-            fig_call : The Plotly figure object for the call heatmap
-            fig_put : The Plotly figure object for the put heatmap
+        fig_call : plotly.graph_objs.Figure
+            Heatmap figure for call.
+        fig_put : plotly.graph_objs.Figure
+            Heatmap figure for put.
 
         Raises
         ------
@@ -198,19 +197,11 @@ class BlackScholes:
 
         # Determine resolution for the spot/x-axis
         ds = round(spot_range[1] - spot_range[0], 4)
-        if ds >= 5.0:
-            x_res = 10
-        else:
-            intervals_spot = int(np.floor(ds / 0.5))
-            x_res = max(2, intervals_spot + 1)
+        x_res = 10 if ds >= 5.0 else max(2, int(np.floor(ds / 0.5)) + 1)
 
         # Determine resolution for the volatility/y-axis
         dv = round(volatility_range[1] - volatility_range[0], 4)
-        if dv >= 0.10:
-            y_res = 10
-        else:
-            intervals_vol = int(np.floor(dv / 0.01))
-            y_res = max(2, intervals_vol + 1)
+        y_res = 10 if dv >= 0.10 else max(2, int(np.floor(dv / 0.01)) + 1)
 
         # Create arrays of spot prices and volatilities
         spot_prices = np.linspace(spot_range[0], spot_range[1], x_res)
@@ -237,7 +228,7 @@ class BlackScholes:
         call_data, cmap_call, center_call = data_and_cmap(call_prices, purchase_price_call)
         put_data, cmap_put, center_put = data_and_cmap(put_prices, purchase_price_put)
 
-        # Create CALL figure
+        # Create Call figure
         fig_call = go.Figure()
         fig_call.add_trace(go.Heatmap(
             z=call_data,
@@ -274,7 +265,7 @@ class BlackScholes:
             height=600,
         )
 
-        # Create PUT figure
+        # Create Put figure
         fig_put = go.Figure()
         fig_put.add_trace(go.Heatmap(
             z=put_data,
@@ -335,9 +326,9 @@ class BlackScholes:
         param_name : str
             Which parameter to vary: "underlying_price", "strike", "time_to_maturity", "interest_rate", or "volatility".
         num_points : int, optional
-            Number of sample points in the -pct_range%..+pct_range% interval.
+            Number of sample points in the range. Default is 50.
         pct_range : float, optional
-            Fractional range (0.50 => ±50%).
+            Fractional range (0.50 => ±50%). Default is 0.50.
 
         Returns
         -------
@@ -350,30 +341,24 @@ class BlackScholes:
         ValueError
             If the provided `param_name` or `greek_name` is invalid.
         """
-        # Check if param_name exists
         if not hasattr(self, param_name):
             raise ValueError(f"Invalid parameter name: {param_name}")
 
-        # Get the current value of the parameter to vary
         current_val = getattr(self, param_name)
-
-        # Build an array of parameter values from -pct_range% to +pct_range%
         min_val = current_val * (1 - pct_range)
         max_val = current_val * (1 + pct_range)
         x_vals = np.linspace(min_val, max_val, num_points).tolist()
 
-        # List to store Greek values
         y_vals = []
 
-        # Iterate over the x_vals, temporarily modify the parameter, and compute the Greek
         for x in x_vals:
             setattr(self, param_name, x) # Temporarily override the parameter
             greeks_map = self.greeks()
-
             if greek_name not in greeks_map:
+                # revert first, then raise
                 raise ValueError(f"Invalid Greek name: {greek_name}")
-
             y_vals.append(greeks_map[greek_name])
-            setattr(self, param_name, current_val) # Revert the parameter back to its original value
+        
+        setattr(self, param_name, current_val) # Revert the parameter back to its original value
 
         return x_vals, y_vals
