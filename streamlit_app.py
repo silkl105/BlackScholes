@@ -5,68 +5,62 @@ import plotly.express as px
 import warnings
 import os
 
-st.set_page_config(layout="wide")
-
-def main():
+def main() -> None:
     """
-    The main Streamlit application function for Black-Scholes option pricing.
-    Presents sidebar inputs for model parameters, displays the resulting call/put
-    prices, and shows separate heatmaps for each with optional purchase price
-    toggles (for PnL calculations).
+    Streamlit application for Black-Scholes option pricing:
+    - Sidebar input for model parameters
+    - Display prices and Greeks
+    - Interactive Greek curves
+    - Call/Put heatmaps
     """
+    st.set_page_config(layout="wide", page_title="Black-Scholes-Merton Model")
 
     # --- SIDEBAR LAYOUT ---
     st.sidebar.markdown("## **Black-Scholes-Merton Option Pricing Project**")
-    st.sidebar.markdown("<span style='color: green;'>Created by:</span>", unsafe_allow_html=True)
     st.sidebar.markdown(
-        '<a href="https://www.linkedin.com/in/silvioklein/" target="_blank" style="text-decoration: none; color: inherit;">'
-        '<img src="https://cdn-icons-png.flaticon.com/512/174/174857.png" width="25" height="25" '
-        'style="vertical-align: middle; margin-right: 8px;">Silvio Klein</a>', 
-        unsafe_allow_html=True
+    "<span style='color: green;'>Created by: </span>"
+    "<a href='https://www.linkedin.com/in/silvioklein/' target='_blank' "
+    "style='text-decoration: none; color: inherit;'>"
+    "<img src='https://cdn-icons-png.flaticon.com/512/174/174857.png' width='25' height='25' "
+    "style='vertical-align: middle; margin-right: 8px;'>"
+    "Silvio Klein</a>",
+    unsafe_allow_html=True
     )
 
     st.sidebar.markdown("### Option Price Inputs")
-    underlying_price = st.sidebar.number_input("Current Asset Price (S)", min_value=0.01, value=100.0, help="The current (spot) price of the underlying asset ($ per share), must be > 0.")
-    strike_price = st.sidebar.number_input("Strike Price (K)", min_value=0.01, value=100.0, help = "The strike price of the option ($ per share), must be > 0.")
-    time_to_maturity = st.sidebar.number_input("Time to Maturity (years, t)", min_value=0.01, value=1.0, help ="The time to maturity in years, must be > 0.")
-    interest_rate = st.sidebar.number_input("Risk-Free Interest Rate (r)", min_value=0.0, max_value=1.0, value=0.05, help = "The continuously compounded risk-free interest rate (% p.a.), must be > 0.")
-    volatility = st.sidebar.number_input("Volatility (σ)", min_value=0.01, value=0.2, help ="The volatility of the underlying asset (% p.a.), must be > 0.")
-    dividend_yield = st.sidebar.number_input("Dividend Yield (q)", min_value=0.0, max_value=1.0, value=0.0, help="Continuously compounded  dividend yield (% p.a., 0.00 implies no dividends).")
+    S = st.sidebar.number_input("Current Asset Price (S)", min_value=0.01, value=100.0, help="The current (spot) price of the underlying asset ($ per share), must be > 0.")
+    K = st.sidebar.number_input("Strike Price (K)", min_value=0.01, value=100.0, help = "The strike price of the option ($ per share), must be > 0.")
+    T = st.sidebar.number_input("Time to Maturity (years, t)", min_value=0.01, value=1.0, help ="The time to maturity in years, must be > 0.")
+    r = st.sidebar.number_input("Risk-Free Interest Rate (r)", min_value=0.0, max_value=1.0, value=0.05, help = "The continuously compounded risk-free interest rate (% p.a.), must be > 0.")
+    vol = st.sidebar.number_input("Volatility (σ)", min_value=0.01, value=0.2, help ="The volatility of the underlying asset (% p.a.), must be > 0.")
+    q = st.sidebar.number_input("Dividend Yield (q)", min_value=0.0, max_value=1.0, value=0.0, help="Continuously compounded  dividend yield (% p.a., 0.00 implies no dividends).")
 
     # Heatmap Parameter Sliders
     st.sidebar.markdown("---")
     st.sidebar.subheader("Heatmap Parameters")
     vol_min = st.sidebar.slider("Min Volatility", 0.01, 1.0, 0.1, 0.01)
     vol_max = st.sidebar.slider("Max Volatility", 0.01, 1.0, 0.5, 0.01)
-    spot_min = st.sidebar.number_input("Min Spot Price", min_value=0.01, value=underlying_price * 0.8)
-    spot_max = st.sidebar.number_input("Max Spot Price", min_value=0.01, value=underlying_price * 1.2)
+    spot_min = st.sidebar.number_input("Min Spot Price", min_value=0.01, value=S * 0.8)
+    spot_max = st.sidebar.number_input("Max Spot Price", min_value=0.01, value=S * 1.2)
 
     # --- MAIN PAGE LAYOUT ---
     st.title("Black-Scholes-Merton Pricing Model")
 
-    # Instantiate the BlackScholes model
-    bs = BlackScholes(
-        underlying_price=underlying_price,
-        strike=strike_price,
-        time_to_maturity=time_to_maturity,
-        interest_rate=interest_rate,
-        volatility=volatility,
-        dividend_yield=dividend_yield
-    )
+    bs = BlackScholes(S, K, T, r, vol, q)
 
-    # Calculate current call and put prices, and greeks
+    # Current call/put prices + Greeks
     call_price = bs.call_option_price()
     put_price = bs.put_option_price()
     greeks_dict = bs.greeks()
 
     # Display the user inputs in a table
     input_data = {
-        "Current Asset Price": [underlying_price],
-        "Strike Price": [strike_price],
-        "Time to Maturity (Years)": [time_to_maturity],
-        "Volatility (σ)": [volatility],
-        "Risk-Free Interest Rate": [interest_rate],
-        "Dividend Yield (q)": [dividend_yield],  # new
+        "Current Asset Price": [S],
+        "Strike Price": [K],
+        "Time to Maturity (Years)": [T],
+        "Volatility (σ)": [vol],
+        "Risk-Free Interest Rate": [r],
+        "Dividend Yield (q)": [q],
     }
     st.table(pd.DataFrame(input_data).reset_index(drop=True))
 
@@ -168,6 +162,7 @@ def main():
         """, unsafe_allow_html=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
+
     with st.expander("More about Greeks:"):
         st.info("""
         - **Delta (Δ):** The first derivative of option price with respect to underlying price S. Measures the sensitivity to underlying price changes, i.e., how much the option price changes when the underlying price changes by $1.
@@ -176,9 +171,8 @@ def main():
         - **Vega:** The first derivative of option price with respect to volatility σ. Measures how sensitive the option price is to a 1 percentage point change in volatility.
         """)
         st.markdown("<br>", unsafe_allow_html=True)
-        st.markdown("##### Explore How Greeks Respond to Changing Option Parameters:")
+        st.markdown("##### Explore Greek Sensitivity:")
 
-        # 1) Two dropdowns: which Greek, which parameter
         greek_options = [("Call Delta", "delta_call"),
                         ("Put Delta", "delta_put"),
                         ("Gamma", "gamma"),
@@ -190,31 +184,28 @@ def main():
                         ("Time to Maturity (t)", "time_to_maturity"),
                         ("Interest Rate (r)", "interest_rate")]
 
-        selected_greek_label = st.selectbox(
+        greek_label = st.selectbox(
             "Select Greek (y-axis)",
             [opt[0] for opt in greek_options]
         )
-        selected_param_label = st.selectbox(
+        param_label = st.selectbox(
             "Select parameter to vary (x-axis)",
             [opt[0] for opt in param_options]
         )
         
-        # Map the user-friendly label to the internal key
-        greek_internal = next(code for label, code in greek_options if label == selected_greek_label)
-        param_internal = next(code for label, code in param_options if label == selected_param_label)
+        greek_internal = next(code for label, code in greek_options if label == greek_label)
+        param_internal = next(code for label, code in param_options if label == param_label)
 
-        # 2) Call bs.compute_greek_curve(...) with the chosen param & Greek
         x_vals, y_vals = bs.compute_greek_curve(greek_name=greek_internal, param_name=param_internal)
 
-        # 3) Plot with plotly or streamlit line chart
         fig = px.line(
             x=x_vals, y=y_vals,
-            labels={"x": selected_param_label, "y": selected_greek_label},
-            title=f"{selected_greek_label} vs. {selected_param_label}"
+            labels={"x": param_label, "y": greek_label},
+            title=f"{greek_label} vs. {param_label}"
         )
         st.plotly_chart(fig, use_container_width=True)
 
-    st.markdown("<br><br>", unsafe_allow_html=True)
+    st.markdown("---", unsafe_allow_html=True)
     st.subheader("Call and Put Price Heatmaps")
     st.info(
         "Explore how European option prices differ based on spot prices and volatility.\n\n"
@@ -224,7 +215,6 @@ def main():
 
     # Two columns: each with its own purchase price and heatmap
     heat_col1, heat_col2 = st.columns(2)
-
     with heat_col1:
         purchase_price_call = st.number_input(
             "Call Purchase Price",
