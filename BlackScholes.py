@@ -151,27 +151,26 @@ class BlackScholes:
             "theta_put": put_theta,
             "vega": vega,
         }
-    
+
     def generate_heatmaps(
         self,
         spot_range: tuple[float, float],
         volatility_range: tuple[float, float],
         purchase_price_call: float = 0.0,
         purchase_price_put: float = 0.0
-    ):
+    ) -> tuple[go.Figure, go.Figure]:
         """
-        Generate heatmaps for call and put across specified spot and volatility ranges.
+        Generate interactive heatmaps for call and put across specified spot and volatility ranges.
         Optionally incorporate a purchase price for each option to display PnL.
 
         If `purchase_price_call` > 0, the call heatmap will show: call_price - purchase_price_call
         If `purchase_price_put` > 0, the put heatmap will show: put_price - purchase_price_put
-        Both are displayed using a diverging colormap (RdYlGn) centered at zero.
-        If either purchase price is 0.0, that options heatmap displays its raw price
-        with the 'viridis' colormap.
+        Both are displayed using a diverging colormap (RdYlGn) centered at zero. If either purchase
+        price is 0.0, that options heatmap displays its raw price with the 'viridis' colormap.
 
         Parameters
         ----------
-        spot_range : tuple of floats.
+        spot_range : tuple of floats
             (min_spot, max_spot). The inclusive range of spot prices to evaluate. Both must be strictly > 0.
         volatility_range : tuple of floats
             (min_vol, max_vol). The inclusive range of volatilities to evaluate. Both must be strictly > 0.
@@ -180,12 +179,13 @@ class BlackScholes:
 
         Returns
         -------
-        fig_call : matplotlib.figure.Figure. The Matplotlib figure object for the call heatmap.
-        fig_put : matplotlib.figure.Figure. The Matplotlib figure object for the put heatmap.
+        tuple[plotly.graph_objects.Figure, plotly.graph_objects.Figure]
+            fig_call : The Plotly figure object for the call heatmap
+            fig_put : The Plotly figure object for the put heatmap
 
         Raises
         ------
-        ValueError. If the lower bound of either range is not strictly > 0.
+        ValueError: If the lower bound of either range is not strictly > 0.
         """
         if spot_range[0] <= 0:
             raise ValueError(
@@ -227,52 +227,89 @@ class BlackScholes:
                 call_prices[i, j] = self.call_option_price()
                 put_prices[i, j] = self.put_option_price()
 
-        # Decide how to render call and put data: PnL or raw option value
         def data_and_cmap(prices: np.ndarray, purchase_price: float):
-            """
-            Returns (transformed_data, colormap, center).
-            If purchase_price > 0, data = prices - purchase_price (PnL), colormap = 'RdYlGn', center=0.
-            Otherwise, data = prices (raw option value), colormap = 'viridis', center=None.
-            """
+            """Returns (transformed_data, colorscale, center)"""
             if purchase_price > 0:
-                return prices - purchase_price, "RdYlGn", 0
+                return prices - purchase_price, 'RdYlGn', 0
             else:
-                return prices, "viridis", None
+                return prices, 'Viridis', None
 
         call_data, cmap_call, center_call = data_and_cmap(call_prices, purchase_price_call)
-        put_data,  cmap_put,  center_put  = data_and_cmap(put_prices, purchase_price_put)
+        put_data, cmap_put, center_put = data_and_cmap(put_prices, purchase_price_put)
 
-        # --- Create the CALL figure ---
-        fig_call, ax_call = plt.subplots(figsize=(7, 6))
-        sns.heatmap(
-            call_data,
-            xticklabels=[f"{p:.1f}" for p in spot_prices],
-            yticklabels=[f"{v:.2f}" for v in volatilities],
-            annot=True,
-            fmt=".2f",
-            cmap=cmap_call,
-            center=center_call,
-            ax=ax_call
+        # Create CALL figure
+        fig_call = go.Figure()
+        fig_call.add_trace(go.Heatmap(
+            z=call_data,
+            x=spot_prices,
+            y=volatilities,
+            colorscale=cmap_call,
+            zmid=center_call if center_call is not None else None,
+            text=[[f"{val:.2f}" for val in row] for row in call_data],
+            texttemplate="%{text}",
+            textfont={"size": 10},
+            showscale=True,
+            hovertemplate=(
+                "Spot: %{x:.2f}<br>"
+                "Volatility: %{y:.2f}<br>"
+                f"{'Call PnL' if purchase_price_call > 0 else 'Call Price'}: "+"%{z:.4f}"
+                "<extra></extra>")
+        ))
+        
+        fig_call.update_layout(
+            title=f"{'Call Option PnL' if purchase_price_call > 0 else 'Call Option Prices'}",
+            xaxis=dict(
+                tickmode='array',
+                tickvals=spot_prices,
+                ticktext=[f"{p:.1f}" for p in spot_prices],
+                title="Spot Price"
+            ),
+            yaxis=dict(
+                tickmode='array',
+                tickvals=volatilities,
+                ticktext=[f"{v:.2f}" for v in volatilities],
+                title="Volatility"
+            ),
+            width=700,
+            height=600,
         )
-        ax_call.set_xlabel("Spot Price")
-        ax_call.set_ylabel("Volatility")
-        fig_call.tight_layout()
 
-        # --- Create the PUT figure ---
-        fig_put, ax_put = plt.subplots(figsize=(7, 6))
-        sns.heatmap(
-            put_data,
-            xticklabels=[f"{p:.1f}" for p in spot_prices],
-            yticklabels=[f"{v:.2f}" for v in volatilities],
-            annot=True,
-            fmt=".2f",
-            cmap=cmap_put,
-            center=center_put,
-            ax=ax_put
+        # Create PUT figure
+        fig_put = go.Figure()
+        fig_put.add_trace(go.Heatmap(
+            z=put_data,
+            x=spot_prices,
+            y=volatilities,
+            colorscale=cmap_put,
+            zmid=center_put if center_put is not None else None,
+            text=[[f"{val:.2f}" for val in row] for row in put_data],
+            texttemplate="%{text}",
+            textfont={"size": 10},
+            showscale=True,
+            hovertemplate=(
+                "Spot: %{x:.2f}<br>"
+                "Volatility: %{y:.2f}<br>"
+                f"{'Put PnL' if purchase_price_put > 0 else 'Put Price'}: "+"%{z:.4f}"
+                "<extra></extra>")
+        ))
+        
+        fig_put.update_layout(
+            title=f"{'Put Option PnL' if purchase_price_put > 0 else 'Put Option Prices'}",
+            xaxis=dict(
+                tickmode='array',
+                tickvals=spot_prices,
+                ticktext=[f"{p:.1f}" for p in spot_prices],
+                title="Spot Price"
+            ),
+            yaxis=dict(
+                tickmode='array',
+                tickvals=volatilities,
+                ticktext=[f"{v:.2f}" for v in volatilities],
+                title="Volatility"
+            ),
+            width=700,
+            height=600,
         )
-        ax_put.set_xlabel("Spot Price")
-        ax_put.set_ylabel("Volatility")
-        fig_put.tight_layout()
 
         return fig_call, fig_put
     
