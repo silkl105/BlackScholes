@@ -1,21 +1,60 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 from BlackScholes import BlackScholes
 from US_YieldCurve import fetch_us_yield_curve_with_maturities
 import plotly.express as px
 from datetime import datetime
+from bisect import bisect_left
 import warnings
 import os
 
 @st.cache_data
 def get_cached_yield_curve():
     """
-    Returns (maturities, yields, latest_date) cached.
-    This function is only called once per session, or if its code changes.
+    Return the (maturities, yields, latest_date) from the US Treasury yield curve,
+    caching the result to avoid repeated network calls.
     """
     cont_mats, cont_yields_, date_ = fetch_us_yield_curve_with_maturities()
     return cont_mats, cont_yields_, date_
 
+
+def calculate_risk_free_rate_from_yield_curve(
+    yield_curve_data: tuple[list[float], list[float]],
+    time_to_maturity: float
+) -> float:
+    """
+    Calculate an interpolated risk-free rate from the given yield_curve_data
+    for a specified time_to_maturity.
+
+    If no data is present, returns 5% (0.05) as a fallback.
+
+    Parameters
+    ----------
+    yield_curve_data : tuple(list, list)
+        The yield curve data (maturities, yields).
+    time_to_maturity : float
+        Desired maturity in years.
+
+    Returns
+    -------
+    float
+        The interpolated continuously-compounded yield (decimal).
+    """
+    maturities, yields = yield_curve_data
+    if not maturities or not yields:
+        return 0.05
+
+    idx = bisect_left(maturities, time_to_maturity)
+    if idx == 0:
+        return yields[0]
+    if idx == len(maturities):
+        return yields[-1]
+    # Linear interpolation between the two closest maturities
+    t1, t2 = maturities[idx - 1], maturities[idx]
+    y1, y2 = yields[idx - 1], yields[idx]
+    # Weighted interpolation
+    return y1 + (time_to_maturity - t1) * (y2 - y1) / (t2 - t1)
 
 def main() -> None:
     """
@@ -30,8 +69,11 @@ def main() -> None:
 
     with st.spinner("Fetching most recent US Treasury yield curve data. This will only take a few seconds..."):
         cached_maturities, cached_yields, cached_date = get_cached_yield_curve()
-        formatted_date = cached_date.strftime("%Y-%m-%d")
-
+        if cached_date:
+            formatted_date = cached_date.strftime("%Y-%m-%d")
+        else:
+            formatted_date = "N/A"
+    
     # ---------- SIDEBAR ----------
     st.sidebar.markdown("## **Black-Scholes-Merton Option Pricing Project**")
     st.sidebar.markdown(
@@ -53,10 +95,30 @@ def main() -> None:
     
     use_curve = st.sidebar.checkbox("Use US Yield Curve", value=False)
     if use_curve:
-        r = st.sidebar.number_input("Risk-Free Rate (r)", min_value=0.0, max_value=1.0, value=0.05, disabled=True)
+        # Use the yield curve data to calculate the effective risk-free rate
+        interpolated_r = calculate_risk_free_rate_from_yield_curve(
+            (cached_maturities, cached_yields), T
+        )
+        # Display the interpolated rate (but lock the input field)
+        r = st.sidebar.slider(
+            "Risk-Free Rate (r)",
+            min_value=0.0,
+            max_value=10.0,
+            value=round(interpolated_r, 6)*100,
+            format="%.4f%%",
+            disabled=True
+        )
     else:
-        r = st.sidebar.number_input("Risk-Free Rate (r)", min_value=0.0, max_value=1.0, value=0.05)
-
+        # Allow manual input for the risk-free rate
+        r = st.sidebar.slider(
+            "Risk-Free Rate (r)",
+            min_value=0.0,
+            max_value=10.0,
+            value=5.0,
+            step=0.1,
+            format="%.1f%%"
+        ) / 100.0  # Convert from percentage to decimal
+    
     # Heatmap Parameter Sliders
     st.sidebar.subheader("Heatmap Range")
     vol_min = st.sidebar.slider("Min Volatility", 0.01, 1.0, 0.1, 0.01)
@@ -72,7 +134,13 @@ def main() -> None:
         yield_curve_data = (cached_maturities, cached_yields)
     else:
         yield_curve_data = None
-    bs = BlackScholes(S, K, T, r, vol, q, use_curve, yield_curve_data)
+
+    bs = None
+    try:
+        bs = BlackScholes(S, K, T, r, vol, q, use_curve, yield_curve_data)
+    except ValueError as exc:
+        st.error(f"Error in input parameters: {exc}")
+        st.stop()
 
     # Current call/put prices + Greeks
     call_price = bs.call_option_price()
@@ -87,7 +155,7 @@ def main() -> None:
             "Strike Price": [f"${K:.2f}"],
             "Time to Maturity (Years)": [f"{T:.2f}"],
             "Volatility (σ)": [f"{vol:.2%}"],
-            "Risk-Free Interest Rate": [f"{r:.2%}" if not use_curve else "(locked)"],
+            "Risk-Free Interest Rate": [f"{r:.2%}" if not use_curve else f"{interpolated_r * 100:.4f}%"],
             "Dividend Yield (q)": [f"{q:.2%}"],
         }
         st.table(pd.DataFrame(input_data).reset_index(drop=True))
@@ -137,7 +205,6 @@ def main() -> None:
         </style>
         """, unsafe_allow_html=True)
 
-        # Greeks
         call_delta = greeks_dict["delta_call"]
         call_theta = greeks_dict["theta_call"]
         put_delta  = greeks_dict["delta_put"]
@@ -226,24 +293,26 @@ def main() -> None:
 
             x_vals, y_vals = bs.compute_greek_curve(greek_name=greek_internal, param_name=param_internal)
 
-            fig = px.line(
-                x=x_vals, y=y_vals,
-                labels={"x": param_label, "y": greek_label},
-                title=f"{greek_label} vs. {param_label}"
-            )
-            st.plotly_chart(fig, use_container_width=True)
+            try:
+                x_vals, y_vals = bs.compute_greek_curve(greek_internal, param_internal)
+                fig = px.line(
+                    x=x_vals,
+                    y=y_vals,
+                    labels={"x": param_label, "y": greek_label},
+                    title=f"{greek_label} vs. {param_label}",
+                )
+                st.plotly_chart(fig, use_container_width=True)
+            except ValueError as err:
+                st.error(f"Cannot compute Greek curve: {err}")
 
     elif choice == nav_items[1]:
-        st.title("Heatmaps")
-        #st.markdown("---", unsafe_allow_html=True)
-        st.subheader("Call and Put Price Heatmaps")
+        st.markdown("# Call and Put Price Heatmaps")
         st.info(
             "Explore how European option prices differ based on spot prices and volatility.\n\n"
             "If you enter a purchase price > 0, the heatmap shows PnL values (option price - purchase price) "
             "using a diverging red-green colormap centered at zero. Otherwise, it displays raw option prices."
         )
 
-        # Two columns: each with its own purchase price and heatmap
         heat_col1, heat_col2 = st.columns(2)
         with heat_col1:
             purchase_price_call = st.number_input(
@@ -254,14 +323,16 @@ def main() -> None:
                 value=0.0,
                 help="If > 0.00, the heatmap shows the call price - the purchase price. Otherwise, it shows the raw call price."
             )
-            # Only affect the call heatmap
-            fig_call, _ = bs.generate_heatmaps(
-                (spot_min, spot_max),
-                (vol_min, vol_max),
-                purchase_price_call=purchase_price_call,
-                purchase_price_put=0.0
-            )
-            st.plotly_chart(fig_call, use_container_width=True)
+            try:
+                fig_call, _ = bs.generate_heatmaps(
+                    (spot_min, spot_max),
+                    (vol_min, vol_max),
+                    purchase_price_call=purchase_price_call,
+                    purchase_price_put=0.0
+                )
+                st.plotly_chart(fig_call, use_container_width=True)
+            except ValueError as exc:
+                st.error(f"Error generating call heatmap: {exc}")
 
         with heat_col2:
             purchase_price_put = st.number_input(
@@ -272,14 +343,16 @@ def main() -> None:
                 value=0.0,
                 help="If > 0.00, the heatmap shows the put price - the purchase price. Otherwise, it shows the raw put price."
             )
-            # Only affect the put heatmap
-            _, fig_put = bs.generate_heatmaps(
-                (spot_min, spot_max),
-                (vol_min, vol_max),
-                purchase_price_call=0.0,
-                purchase_price_put=purchase_price_put
-            )
-            st.plotly_chart(fig_put, use_container_width=True)
+            try:
+                _, fig_put = bs.generate_heatmaps(
+                    (spot_min, spot_max),
+                    (vol_min, vol_max),
+                    purchase_price_call=0.0,
+                    purchase_price_put=purchase_price_put
+                )
+                st.plotly_chart(fig_put, use_container_width=True)
+            except ValueError as exc:
+                st.error(f"Error generating put heatmap: {exc}")
     
     elif choice == nav_items[2]:
         st.title("US Yield Curve Visualization")
@@ -290,8 +363,8 @@ def main() -> None:
 
             if use_curve:
                 st.write(
-                    f"**Effective Rate** (closest to {T} yrs) used: "
-                    f"{bs.interest_rate*100:.3f}% (continuously compounded)."
+                    f"**Effective Rate** (closest to {np.round(T, 2)} yrs) used: "
+                    f"{bs.interest_rate*100:.4f}% (continuously compounded)."
                 )
 
             fig_curve = px.line(
