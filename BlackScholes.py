@@ -1,11 +1,12 @@
 import numpy as np
-from scipy.stats import norm
 import plotly.graph_objects as go
+from scipy.stats import norm
 from typing import Tuple, Dict, List
+from bisect import bisect_left
 
 class BlackScholes:
     """
-    A class to compute Black-Scholes option prices and Greeks, and generate heatmaps of
+    A class to compute Black-Scholes(-Merton) option prices & Greeks, and generate heatmaps of
     call and put prices (or PnL if a purchase price is given) across a range
     of spot prices and volatilities.
 
@@ -28,8 +29,21 @@ class BlackScholes:
     ------
     ValueError. If dividend_yield is negative or if any of the other initialized parameters is non-positive.
     """
-
-    def __init__(self, underlying_price: float, strike: float, time_to_maturity: float, interest_rate: float, volatility: float, dividend_yield: float = 0.0) -> None:
+    def __init__(self,
+                 underlying_price: float,
+                 strike: float,
+                 time_to_maturity: float,
+                 interest_rate: float,
+                 volatility: float,
+                 dividend_yield: float = 0.0,
+                 use_yield_curve: bool = False,
+                 yield_curve_data: Tuple[List[float], List[float]] = ([], [])
+    ) -> None:
+        """
+        If use_yield_curve=True, we look up the single closest maturity from the 
+        yield_curve_data to set interest_rate. We do not fetch inside this constructor .
+        `yield_curve_data` must be a tuple (maturities, yields).
+        """
         # Input validation (all parameters > 0)
         inputs = {"underlying_price": underlying_price,
                   "strike": strike,
@@ -38,18 +52,43 @@ class BlackScholes:
                   "volatility": volatility
         }
         for name, value in inputs.items():
-            if value <= 0:
-                raise ValueError(f"{name} must be a positive float, got {value} instead.")
-        
+            if value < 0:
+                raise ValueError(f"{name} must be a non-negative float, got {value} instead.")
         if dividend_yield < 0:
             raise ValueError(f"Dividend yield must be >= 0, got {dividend_yield} instead.")
 
         self.underlying_price = underlying_price
         self.strike = strike
-        self.time_to_maturity = time_to_maturity
-        self.interest_rate = interest_rate
         self.volatility = volatility
         self.dividend_yield = dividend_yield
+
+        if use_yield_curve:
+            T_rounded = round(time_to_maturity, 2)
+            self.time_to_maturity = T_rounded
+
+            maturities, yields = yield_curve_data
+            if not maturities or not yields:
+                # fallback if no data
+                self.interest_rate = 0.05
+            else:
+                # Find the single closest index
+                idx = bisect_left(maturities, T_rounded)
+                if idx <= 0:
+                    r_decimal = yields[0]
+                elif idx >= len(maturities):
+                    r_decimal = yields[-1]
+                else:
+                    lower_diff = abs(T_rounded - maturities[idx - 1])
+                    upper_diff = abs(T_rounded - maturities[idx])
+                    if lower_diff < upper_diff:
+                        r_decimal = yields[idx - 1]
+                    else:
+                        r_decimal = yields[idx]
+                
+                self.interest_rate = r_decimal
+        else:
+            self.time_to_maturity = time_to_maturity
+            self.interest_rate = interest_rate
 
     def calculate_d1_d2(self) -> Tuple[float, float]:
         """
@@ -94,8 +133,8 @@ class BlackScholes:
             discounted_strike * norm.cdf(-d2)
             - self.underlying_price * np.exp(-self.dividend_yield * self.time_to_maturity) * norm.cdf(-d1)
         )
-    
-    def greeks(self) -> dict:
+
+    def greeks(self) -> Dict[str, float]:
         """
         Compute delta, gamma, theta, and vega for both call and put options under the Black-Scholes-Merton model. 
 
@@ -122,31 +161,26 @@ class BlackScholes:
         gamma = (np.exp(-q * T) * pdf_d1) / (S * sigma * np.sqrt(T))
 
         # Vega (same for call & put): change in option price given a 1% change in implied volatility
-        vega = (1/100) * (S * np.exp(-q * T) * pdf_d1 * np.sqrt(T))
+        vega = 0.01 * (S * np.exp(-q * T) * pdf_d1 * np.sqrt(T))
 
         # Theta (per calendar day): option time decay, change in option price per one calendar day
-        call_theta = (1/365) * (
-            - (S * np.exp(-q * T) * pdf_d1 * sigma)
-              / (2.0 * np.sqrt(T))
+        call_theta = (1 / 365.0) * (
+            - (S * np.exp(-q * T) * pdf_d1 * sigma) / (2.0 * np.sqrt(T))
             - r * K * np.exp(-r * T) * norm.cdf(d2)
             + q * S * np.exp(-q * T) * norm.cdf(d1)
         )
-
-        put_theta = (1/365) * (
-            - (S * np.exp(-q * T) * pdf_d1 * sigma)
-              / (2.0 * np.sqrt(T))
+        put_theta = (1 / 365.0) * (
+            - (S * np.exp(-q * T) * pdf_d1 * sigma) / (2.0 * np.sqrt(T))
             + r * K * np.exp(-r * T) * norm.cdf(-d2)
             - q * S * np.exp(-q * T) * norm.cdf(-d1)
         )
 
-        return {
-            "delta_call": delta_call,
-            "delta_put": delta_put,
-            "gamma": gamma,
-            "theta_call": call_theta,
-            "theta_put": put_theta,
-            "vega": vega,
-        }
+        return {"delta_call": delta_call,
+                "delta_put": delta_put,
+                "gamma": gamma,
+                "theta_call": call_theta,
+                "theta_put": put_theta,
+                "vega": vega}
 
     def generate_heatmaps(
         self,
@@ -187,13 +221,9 @@ class BlackScholes:
         ValueError: If the lower bound of either range is not strictly > 0.
         """
         if spot_range[0] <= 0:
-            raise ValueError(
-                f"spot_range lower bound must be > 0, got {spot_range[0]} instead."
-            )
+            raise ValueError(f"spot_range lower bound must be > 0, got {spot_range[0]} instead.")
         if volatility_range[0] <= 0:
-            raise ValueError(
-                f"volatility_range lower bound must be > 0, got {volatility_range[0]} instead."
-            )
+            raise ValueError(f"volatility_range lower bound must be > 0, got {volatility_range[0]} instead.")
 
         # Determine resolution for the spot/x-axis
         ds = round(spot_range[1] - spot_range[0], 4)
@@ -310,7 +340,7 @@ class BlackScholes:
         param_name: str,
         num_points: int = 50,
         pct_range: float = 0.50
-    ) -> tuple[list[float], list[float]]:
+    ) -> Tuple[List[float], List[float]]:
         """
         Compute how the chosen 'greek_name' changes when 'param_name' is varied from 
         -pct_range% to +pct_range% around its current value. Returns (x_vals, y_vals).
