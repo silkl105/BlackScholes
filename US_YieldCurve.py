@@ -14,8 +14,9 @@ def fetch_us_yield_curve_with_maturities(
 ) -> Tuple[List[float], List[float], Optional[datetime]]:
     """
     Fetch the latest US Treasury yield curve data, convert yields to continuously
-    compounded rates, interpolate over continuous maturities, and return the
-    continuous data along with the date of the yield curve.
+    compounded rates (see https://home.treasury.gov/policy-issues/financing-the-government/interest-rate-statistics/interest-rates-frequently-asked-questions),
+    interpolate over continuous maturities, and return the continuous data along
+    with the date of the yield curve.
 
     Parameters
     ----------
@@ -90,8 +91,9 @@ def fetch_us_yield_curve_with_maturities(
             for elem in bc_cat:
                 if elem.tag in maturity_map and elem.text:
                     try:
-                        apr_decimal = float(elem.text) / 100.0
-                        r_cont = log(1 + apr_decimal)
+                        cmt_rate = float(elem.text) / 100.0  # Convert percentage to decimal
+                        apy = (1 + cmt_rate / 2) ** 2 - 1    # Convert semiannual CMT to APY
+                        r_cont = log(1 + apy)                # Convert APY to continuously compounded yield
                         local_yields[maturity_map[elem.tag]] = r_cont
                     except ValueError:
                         # If conversion fails, skip this yield
