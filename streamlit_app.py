@@ -127,8 +127,7 @@ def main() -> None:
     spot_max = st.sidebar.number_input("Max Spot Price", min_value=0.01, value=S * 1.2)
 
     # ---------- MAIN ----------
-    nav_items = ["Prices & Greeks", "Heatmaps", "Yield Curve"]
-    choice = st.radio("Navigation", nav_items, index=0)
+    tab1, tab2, tab3 = st.tabs(["Prices & Greeks", "Heatmaps", "Yield Curve"])
 
     if use_curve:
         yield_curve_data = (cached_maturities, cached_yields)
@@ -147,7 +146,7 @@ def main() -> None:
     put_price = bs.put_option_price()
     greeks_dict = bs.greeks()
 
-    if choice == nav_items[0]:
+    with tab1:
         st.markdown("# Option Prices & Greeks")
         # Display the user inputs in a table
         input_data = {
@@ -305,7 +304,7 @@ def main() -> None:
             except ValueError as err:
                 st.error(f"Cannot compute Greek curve: {err}")
 
-    elif choice == nav_items[1]:
+    with tab2:
         st.markdown("# Call and Put Price Heatmaps")
         st.info(
             "Explore how European option prices differ based on spot prices and volatility.\n\n"
@@ -354,7 +353,7 @@ def main() -> None:
             except ValueError as exc:
                 st.error(f"Error generating put heatmap: {exc}")
     
-    elif choice == nav_items[2]:
+    with tab3:
         st.title("US Yield Curve Visualization")
         if not cached_maturities or not cached_yields:
             st.warning("No yield data available at the moment.")
