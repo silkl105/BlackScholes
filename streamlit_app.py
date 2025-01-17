@@ -358,7 +358,7 @@ def main() -> None:
         if not cached_maturities or not cached_yields:
             st.warning("No yield data available at the moment.")
         else:
-            st.markdown(f"Please find the US Treasury Yield curve from ~0.08y to 30y below, with yields in continuous terms, as of {formatted_date}.")
+            st.markdown(f"Please find the US Treasury Yield curve from ~0.08y to 30y below, with yields in continuous terms, as of {formatted_date}. Select the `Use US Yield Curve` button on the sidebar to use it for risk-free rate calculations.")
 
             if use_curve:
                 st.write(
@@ -376,9 +376,10 @@ def main() -> None:
             st.markdown("""
             **Technical Construction:**  
             1. Retrieve discrete yields from the official treasury.gov XML feed (see U.S. Department of the Treasury, Daily Treasury Par Yield Curve Rates).
-            2. Convert to continuously compounded rates using `r = ln(1 + y_decimal)`.
-            3. Use cubic interpolation to get a smooth curve from 0.08 to 30 years.
-            4. Pick the single maturity point closest to the specified maturity rounded to two decimals to set the risk-free rate.
+            2. Convert from semi-annual CMT to APY using `APY = (1 + CMT / 2)^2 - 1`.
+            3. Convert to continuously compounded rates using `r = ln(1 + APY)`.
+            4. Use cubic interpolation to get a smooth curve from 0.08 to 30 years.
+            5. Pick the single maturity point closest to the specified maturity rounded to two decimals to set the risk-free rate.
             """)
 
 

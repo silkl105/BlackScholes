@@ -93,7 +93,7 @@ def fetch_us_yield_curve_with_maturities(
                     try:
                         cmt_rate = float(elem.text) / 100.0  # Convert percentage to decimal
                         apy = (1 + cmt_rate / 2) ** 2 - 1    # Convert semiannual CMT to APY
-                        r_cont = log(1 + apy)                # Convert APY to continuously compounded yield
+                        r_cont = log(1 + apy)                # Convert APY to continuously compounded yield (math.log = ln)
                         local_yields[maturity_map[elem.tag]] = r_cont
                     except ValueError:
                         # If conversion fails, skip this yield
