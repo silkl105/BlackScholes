@@ -3,8 +3,9 @@
 <p align="center">
   <img src="https://img.shields.io/badge/Python-3.11.8-blue?style=for-the-badge&logo=python" alt="Python 3.11" />
   <img src="https://img.shields.io/badge/Streamlit-1.41.1-ff69b4?style=for-the-badge&logo=streamlit" alt="Streamlit 1.41" />
-  <img src="https://img.shields.io/badge/Tested%20with-Pytest-9cf?style=for-the-badge&logo=pytest" alt="Tested with Pytest" />
   <img src="https://img.shields.io/badge/Anaconda-Enabled-44a833?style=for-the-badge&logo=anaconda" alt="Anaconda Compatible" />
+  <img src="https://img.shields.io/github/actions/workflow/status/<your-username>/<your-repo>/ci.yml?style=for-the-badge" alt="CI status" />
+  <img src="https://img.shields.io/codecov/c/github/<your-username>/<your-repo>?style=for-the-badge" alt="Coverage" />
 </p>
 
 A Python-based project that implements the **Black-Scholes-Merton** model for pricing European call and put options, along with functionality to visualize option Greeks, generate heatmaps, and optionally incorporate real-world **US Treasury yield curve** data. 
