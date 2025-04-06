@@ -28,7 +28,7 @@ def fetch_us_yield_curve_with_maturities(
     Returns
     -------
     tuple of (maturities, yields, latest_date)
-        - maturities: list of floats. Continuous maturities in years, roughly from 0.08 to 30 years.
+        - maturities: list of floats. Continuous maturities in years, roughly from 1 month to 30 years.
         - yields: list of floats. Interpolated, continuously compounded yields (annualized, in decimal).
         - latest_date: datetime or None. The date of the retrieved yield curve, or None if unavailable.
 
@@ -111,7 +111,7 @@ def fetch_us_yield_curve_with_maturities(
         discrete_maturities = sorted(latest_yields.keys())
         discrete_yields = [latest_yields[m] for m in discrete_maturities]
 
-        # Generate a smooth curve from 0.08 to 30 years
+        # Generate a smooth curve from 1 month (0.08 years) to 30 years
         continuous_maturities = np.arange(0.08, 30.01, 0.01)
         interpolation = interp1d(
             discrete_maturities,
