@@ -299,3 +299,62 @@ def test_calculate_risk_free_rate_interpolation():
     yld = [0.01, 0.03]
     result = calculate_risk_free_rate_from_yield_curve((mat, yld), 1.5)
     assert isclose(result, 0.02, rel_tol=1e-8)
+
+
+# ---- Additional Tests ----
+
+@pytest.mark.parametrize("purchase_call, purchase_put", [
+    (5.0, 0.0),   # Only call purchase price
+    (0.0, 7.5),   # Only put purchase price
+    (5.0, 7.5),   # Both purchase prices
+])
+def test_generate_heatmaps_purchase_price_scenarios(purchase_call, purchase_put):
+    """
+    Check coverage for the lines handling purchase_price_call/put > 0,
+    which modifies the heatmap to show PnL instead of raw prices.
+    """
+    bs = BlackScholes(100.0, 100.0, 1.0, 0.05, 0.2)
+    # Use narrower ranges to avoid huge data creation in tests
+    fig_call, fig_put = bs.generate_heatmaps(
+        spot_range=(90, 110),
+        volatility_range=(0.1, 0.3),
+        purchase_price_call=purchase_call,
+        purchase_price_put=purchase_put
+    )
+    # Basic checks that a figure was returned and no exceptions were raised
+    assert fig_call is not None
+    assert fig_put is not None
+
+
+@pytest.mark.parametrize(
+    "time_to_maturity, maturities, yields, expected_rate",
+    [
+        # T=1.0 is exactly in the list => picks yields[0]
+        (1.0, [1.0, 2.0, 5.0], [0.01, 0.03, 0.06], 0.01),
+        # T=4.0 is between 2.0 and 5.0 => closer to 5 => picks 0.06
+        (4.0, [1.0, 2.0, 5.0], [0.01, 0.03, 0.06], 0.06),
+        # T=2.4 is between 2.0 and 5.0 => difference to 2.0=0.4, to 5.0=2.6 => picks 0.03
+        (2.4, [1.0, 2.0, 5.0], [0.01, 0.03, 0.06], 0.03),
+        # T=0.2 is below 1.0 => picks yields[0]
+        (0.2, [1.0, 2.0, 5.0], [0.01, 0.03, 0.06], 0.01),
+        # T=10 is above 5.0 => picks yields[-1]
+        (10.0, [1.0, 2.0, 5.0], [0.01, 0.03, 0.06], 0.06),
+    ]
+)
+def test_black_scholes_use_yield_curve(time_to_maturity, maturities, yields, expected_rate):
+    """
+    Ensure coverage for branches in the yield-curve logic inside BlackScholes,
+    by instantiating with use_yield_curve=True and verifying interest_rate.
+    """
+    bs = BlackScholes(
+        underlying_price=100,
+        strike=100,
+        time_to_maturity=time_to_maturity,
+        interest_rate=0.05,  # fallback if data is missing
+        volatility=0.2,
+        dividend_yield=0.0,
+        use_yield_curve=True,
+        yield_curve_data=(maturities, yields)
+    )
+    # The constructor sets interest_rate from yield_curve_data
+    assert pytest.approx(bs.interest_rate, abs=1e-8) == expected_rate
