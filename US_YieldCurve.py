@@ -110,13 +110,21 @@ def fetch_us_yield_curve_with_maturities(
 
         discrete_maturities = sorted(latest_yields.keys())
         discrete_yields = [latest_yields[m] for m in discrete_maturities]
+        
+        # If fewer than 2 points, return them directly
+        if len(discrete_maturities) <= 2:
+            return discrete_maturities, discrete_yields, latest_date
+        # If we have fewer than 4 points, fallback to linear interpolation instead of cubic
+        interp_kind = "cubic"
+        if len(discrete_maturities) < 4:
+            interp_kind = "linear"
 
         # Generate a smooth curve from 1 month (0.08 years) to 30 years
         continuous_maturities = np.arange(0.08, 30.01, 0.01)
         interpolation = interp1d(
             discrete_maturities,
             discrete_yields,
-            kind="cubic",
+            kind=interp_kind,
             fill_value="extrapolate"
         )
         continuous_yields = interpolation(continuous_maturities)
