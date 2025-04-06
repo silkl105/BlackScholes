@@ -4,8 +4,9 @@
   <img src="https://img.shields.io/badge/Python-3.11.8-blue?style=for-the-badge&logo=python" alt="Python 3.11" />
   <img src="https://img.shields.io/badge/Streamlit-1.41.1-ff69b4?style=for-the-badge&logo=streamlit" alt="Streamlit 1.41" />
   <img src="https://img.shields.io/badge/Anaconda-Enabled-44a833?style=for-the-badge&logo=anaconda" alt="Anaconda Compatible" />
-  <img src="https://img.shields.io/github/actions/workflow/status/silkl105/BlackScholes/ci.yml?style=for-the-badge" alt="CI status" />
-  <img src="https://img.shields.io/codecov/c/github/silkl105/BlackScholes?style=for-the-badge" alt="Coverage" />
+  <a href="https://codecov.io/gh/silkl105/BlackScholes">
+    <img src="https://codecov.io/gh/silkl105/BlackScholes/graph/badge.svg?token=C0U8LI5RJ0" alt="codecov" style="vertical-align:middle;"/>
+  </a>
 </p>
 
 A Python-based project that implements the **Black-Scholes-Merton** model for pricing European call and put options, along with functionality to visualize option Greeks, generate heatmaps, and optionally incorporate real-world **US Treasury yield curve** data. 
