@@ -14,7 +14,7 @@ A Python-based project that implements the **Black-Scholes-Merton** model for pr
 <table>
   <tr>
     <td><img src="https://cdn-icons-png.flaticon.com/512/3063/3063824.png" width="50" /></td>
-    <td>A fully interactive <strong>Streamlit</strong> web application is included so you can explore how option prices and Greeks are affected by spot prices, volatility, dividends, and interest rates.</td>
+    <td>A fully interactive <strong>Streamlit</strong> web application is included so you can explore how option prices and Greeks are affected by spot prices, volatility, dividends, and interest rates. You can try the app live on Streamlit Cloud: [application-blackscholes.streamlit.app](https://application-blackscholes.streamlit.app)</td>
   </tr>
 </table>
 
