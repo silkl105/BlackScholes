@@ -24,7 +24,6 @@ jobs:
         run: |
           pytest --cov=BlackScholes \
                  --cov=US_YieldCurve \
-                 --cov=streamlit_app \
                  --cov-branch \
                  --cov-report=term-missing \
                  --cov-report=xml
